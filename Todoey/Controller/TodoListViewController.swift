@@ -7,36 +7,30 @@
 //
 
 import UIKit
+import RealmSwift
 
 class TodoListViewController: UITableViewController {
     
-    var itemArray = [Item]()
+    let realm = try! Realm()
+    var todoItems : Results<Item>?
+    var selectedCategory : Category? {
+        didSet {
+            loadItems()
+        }
+    }
     
     let defaults = UserDefaults.standard
+    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        let newItem = Item()
-        newItem.title = "Find Mike"
-        itemArray.append(newItem)
-        
-        let newItem2 = Item()
-        newItem2.title = "Buy Eggos"
-        itemArray.append(newItem2)
-        
-        let newItem3 = Item()
-        newItem3.title = "Destroy Demogorgon"
-        itemArray.append(newItem3)
-        
-        if let items = defaults.array(forKey: "TodoListArray") as? [Item] {
-            itemArray = items
-        }
+        print(dataFilePath!)
     }
     
     // MARK: Tableview DataSource Methods
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return itemArray.count
+        return todoItems?.count ?? 1
     }
     
     
@@ -44,30 +38,37 @@ class TodoListViewController: UITableViewController {
         
         let cell = tableView.dequeueReusableCell(withIdentifier: "ToDoItemCell", for: indexPath)
         
-        let item = itemArray[indexPath.row]
-        
-        cell.textLabel?.text = itemArray[indexPath.row].title
-        
-        // Ternary Operator ==>
-        // value = condition ? valueTrue : valueFalse
-        
-        cell.accessoryType = item.done ? .checkmark : .none
+        if let item = todoItems?[indexPath.row] {
+            // Ternary Operator ==>
+            // value = condition ? valueTrue : valueFalse
+            cell.textLabel?.text = todoItems?[indexPath.row].title
+            cell.accessoryType = item.done ? .checkmark : .none
+        } else {
+            cell.textLabel?.text = "no items addded"
+        }
         
         return cell
         
     }
     
     // MARK: TableViewDelegate Methods
+    
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-//        print(itemArray[indexPath.row])
         
-        itemArray[indexPath.row].done = !itemArray[indexPath.row].done
+        if let item = todoItems?[indexPath.row] {
+            do {
+                try realm.write {
+                    item.done = !item.done
+//                    realm.delete(item)
+                }
+            } catch {
+                print("error saving \(error)")
+            }
+        }
         tableView.reloadData()
-        
         tableView.deselectRow(at: indexPath, animated: true)
-        
-        
     }
+    
     // MARK: Add new items
     @IBAction func addButtonPressed(_ sender: UIBarButtonItem) {
         
@@ -76,14 +77,19 @@ class TodoListViewController: UITableViewController {
         let alert = UIAlertController(title: "Add New Alert Item", message: "", preferredStyle: .alert)
         let action = UIAlertAction(title: "Add Item", style: .default) { (action) in
             
-            let newItem = Item()
-            newItem.title = textField.text!
-            
-            self.itemArray.append(newItem)
-            
-            self.defaults.set(self.itemArray, forKey: "TodoListArray")
-            
+            if let currentCategory = self.selectedCategory {
+                do {
+                    try self.realm.write {
+                    let newItem = Item()
+                    newItem.title = textField.text!
+                    currentCategory.items.append(newItem)
+                    }
+                } catch {
+                    print("error connecting to realm \(error)")
+                }
+            }
             self.tableView.reloadData()
+            
         }
         
         alert.addTextField { (alertTextField) in
@@ -95,6 +101,15 @@ class TodoListViewController: UITableViewController {
         alert.addAction(action)
         present(alert, animated: true, completion: nil)
     }
+    
+    
+    // MARK : Model Manipulation Tools
+    func loadItems() {
+        todoItems = selectedCategory?.items.sorted(byKeyPath: "title", ascending: true)
+    }
+    
+    // MARK : Search Bar methods
+    
     
 
 }
